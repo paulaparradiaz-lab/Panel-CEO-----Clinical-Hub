@@ -225,6 +225,18 @@ textarea.campo{min-height:90px;resize:vertical}
 .vt-activos-cifra{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;margin-top:14px}
 .vt-activos-cifra b{font-size:34px;line-height:1;font-weight:700;color:var(--ink);font-variant-numeric:tabular-nums}
 .vt-activos-cifra span{color:var(--faint);font-size:13.5px}
+/* Cobros del mes: barra partida en tres y debajo cada parte con su número */
+.vt-cobros-barra{display:flex;gap:3px;height:18px;margin-top:16px;border-radius:999px;overflow:hidden;background:var(--track)}
+.vt-cobros-barra span{display:block;height:100%;min-width:4px}
+.vt-cobros-barra .vt-cobros-pagaron,.vt-cobros-parte.vt-cobros-pagaron::before{background:var(--brand-ink)}
+.vt-cobros-barra .vt-cobros-faltan,.vt-cobros-parte.vt-cobros-faltan::before{background:var(--brand)}
+.vt-cobros-barra .vt-cobros-reintento,.vt-cobros-parte.vt-cobros-reintento::before{background:var(--s2)}
+.vt-cobros-barra .vt-cobros-cancelaron,.vt-cobros-parte.vt-cobros-cancelaron::before{background:var(--s1)}
+.vt-cobros-partes{display:flex;flex-wrap:wrap;gap:8px 28px;margin-top:14px;font-size:14px;color:var(--muted)}
+.vt-cobros-parte{display:flex;align-items:baseline;gap:6px}
+.vt-cobros-parte::before{content:"";align-self:center;width:10px;height:10px;border-radius:3px}
+.vt-cobros-parte b{font-size:22px;line-height:1;color:var(--ink);font-variant-numeric:tabular-nums}
+.vt-cobros-parte span{color:var(--faint);font-size:13px;font-variant-numeric:tabular-nums}
 .vt-mas{margin-top:12px}
 .vt-var{display:block;margin-top:6px;font-size:12px;font-weight:600;color:var(--faint)}
 .vt-var.sube{color:var(--ok)}

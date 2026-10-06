@@ -3,7 +3,9 @@
    Como el inicio de Hotmart: la gráfica de ventas por día con un
    calendario (desde / hasta) y atajos de periodo; países del mismo
    rango (top 5 y «Mostrar más»); médicos activos al cierre de cada mes,
-   con su propio selector de fechas (como el del MRR).
+   con su propio selector de fechas (como el del MRR); y las renovaciones
+   del mes: la lista de los que tenían que renovar este mes, fijada al cierre
+   del mes anterior, y qué pasó con cada uno.
    Venta = cobro aprobado y no reembolsado (compra nueva o renovación).
    ============================================================ */
 import { escapar, num } from "./nucleo.js";
@@ -56,6 +58,14 @@ export async function render(caja, d){
     <div class="vt-activos-cifra" id="vr-activos-cifra"></div>
     <div class="vt-grafica"><canvas id="vr-activos" aria-label="Médicos activos por mes"></canvas></div></section>
 </div>
+<section class="caja" style="margin-top:14px">${cabecera("ayuda-cobros", "Renovaciones de " + MESES[new Date(Date.now() + ZONA).getUTCMonth()], { id: "vr-cobros-sub", texto: "" }, [
+    "La lista se fija al <b>cierre del mes anterior</b>: todos los médicos que ese día estaban activos y al día, porque a todos les toca renovar este mes. Durante el mes la lista no cambia.",
+    "Los que <b>entran nuevos</b> este mes no cuentan: su primera renovación es el mes siguiente. Tampoco los que al cierre del mes anterior ya estaban atrasados (deben de antes).",
+    "<b>Pagaron:</b> Hotmart ya les cobró este mes. <b>Con cobro programado:</b> su fecha de cobro todavía no llega este mes; Hotmart les cobrará solo ese día. <b>En reintento de cobro:</b> Hotmart intentó cobrarles y no pudo; lo sigue intentando unos días. <b>Cancelaron:</b> se dieron de baja (o Hotmart los dio de baja) sin pagar este mes.",
+    "La <b>tasa de renovación</b> es pagaron ÷ la lista. Al cerrar el mes queda la cifra final; lo que no renovó es el churn del mes."])}
+  <div class="vt-cobros-barra" id="vr-cobros-barra"></div>
+  <div class="vt-cobros-partes" id="vr-cobros-partes"></div>
+</section>
 `;
   armarAyudas(caja);
   /* Los atajos llenan el calendario; tocar el calendario quita el atajo */
@@ -78,6 +88,35 @@ export async function render(caja, d){
   const m = datos.modelo;
   const primero = m.subs.length ? m.subs.reduce((x, s) => Math.min(x, s.alta), Infinity) : Date.now();
   armarSelector(caja, "activos", elegidoActivos, primero, (a, b) => pintarActivos(m, a, b));
+  pintarCobros(m, Date.now());
+}
+
+/* Renovaciones del mes: la lista son los activos y al día al cierre del mes
+   anterior (a todos les toca renovar este mes); cada uno cae en un grupo */
+function pintarCobros(m, ahora){
+  const d = new Date(ahora + ZONA);
+  const iniMes = inicioMes(d.getUTCFullYear(), d.getUTCMonth());
+  const lista = m.subs.filter(s => activa(s, iniMes - 1));
+  const pago = s => s.pagos.some(p => p.t >= iniMes && p.t <= ahora);
+  const pagaron = lista.filter(pago).length;
+  const cancelaron = lista.filter(s => !pago(s) && !vigente(s, ahora)).length;
+  const reintento = lista.filter(s => !pago(s) && vigente(s, ahora) && !activa(s, ahora)).length;
+  const faltan = lista.length - pagaron - cancelaron - reintento;
+  const total = lista.length || 1;
+  const pct = n => Math.round(n / total * 100) + " %";
+  const partes = [
+    ["vt-cobros-pagaron", pagaron, "pagaron"],
+    ["vt-cobros-faltan", faltan, "con cobro programado"],
+    ["vt-cobros-reintento", reintento, "en reintento de cobro"],
+    ["vt-cobros-cancelaron", cancelaron, "cancelaron"]
+  ];
+  const cierre = new Date(iniMes - 1 + ZONA);
+  document.getElementById("vr-cobros-sub").textContent = num(lista.length) + " médicos tenían que renovar (activos y al día al " +
+    cierre.getUTCDate() + " de " + MESES[cierre.getUTCMonth()] + ") · tasa de renovación " + pct(pagaron);
+  document.getElementById("vr-cobros-barra").innerHTML = partes.filter(p => p[1])
+    .map(([c, n, t]) => '<span class="' + c + '" style="width:' + (n / total * 100) + '%" title="' + num(n) + " " + t + '"></span>').join("");
+  document.getElementById("vr-cobros-partes").innerHTML = partes.map(([c, n, t]) =>
+    '<div class="vt-cobros-parte ' + c + '"><b>' + num(n) + '</b> ' + t + ' <span>' + pct(n) + '</span></div>').join("");
 }
 
 /* Médicos activos: una barra por mes del rango con los vigentes al cierre
