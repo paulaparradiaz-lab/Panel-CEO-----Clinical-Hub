@@ -6,11 +6,14 @@
    con su propio selector de fechas (como el del MRR); y las renovaciones
    del mes: la lista de los que tenían que renovar este mes, fijada al cierre
    del mes anterior, y qué pasó con cada uno.
+   Médicos activos y renovaciones los calcula Supabase (funciones
+   activos_por_mes, activos_en y renovaciones_mes, ver
+   sql/ventas_en_supabase.sql): aquí solo se pintan los resultados.
    Venta = cobro aprobado y no reembolsado (compra nueva o renovación).
    ============================================================ */
-import { escapar, num } from "./nucleo.js";
+import { sb, escapar, num } from "./nucleo.js";
 import { nombrePais } from "./ia.js";
-import { finDelDia, claveMes, inicioMes, vigente, activa } from "./ventas-calculos.js";
+import { finDelDia } from "./ventas-calculos.js";
 import { usd, grafica, cabecera, armarAyudas, selectorFechas, armarSelector } from "./ventas-comun.js";
 
 const DIA = 864e5;
@@ -87,22 +90,24 @@ export async function render(caja, d){
   pintar();
   const m = datos.modelo;
   const primero = m.subs.length ? m.subs.reduce((x, s) => Math.min(x, s.alta), Infinity) : Date.now();
-  armarSelector(caja, "activos", elegidoActivos, primero, (a, b) => pintarActivos(m, a, b));
-  pintarCobros(m, Date.now());
+  armarSelector(caja, "activos", elegidoActivos, primero, pintarActivos);
+  pintarCobros();
 }
+
+const enIso = t => new Date(t).toISOString();
+const sinDatos = (id, texto) => { const el = document.getElementById(id); if (el) el.innerHTML = '<p class="vacio">' + escapar(texto) + '</p>'; };
 
 /* Renovaciones del mes: la lista son los activos y al día al cierre del mes
    anterior (a todos les toca renovar este mes); cada uno cae en un grupo */
-function pintarCobros(m, ahora){
+async function pintarCobros(){
+  const ahora = Date.now();
+  const { data, error } = await sb.rpc("renovaciones_mes", { p_ahora: enIso(ahora) });
+  if (!document.getElementById("vr-cobros-barra")) return;   // mientras llegaba, se cambió de vista
+  if (error || !data || !data[0]) return sinDatos("vr-cobros-partes", "No se pudieron leer las renovaciones. " + ((error && error.message) || ""));
+  const { lista, pagaron, cobro_programado: faltan, reintento, cancelaron } = data[0];
   const d = new Date(ahora + ZONA);
-  const iniMes = inicioMes(d.getUTCFullYear(), d.getUTCMonth());
-  const lista = m.subs.filter(s => activa(s, iniMes - 1));
-  const pago = s => s.pagos.some(p => p.t >= iniMes && p.t <= ahora);
-  const pagaron = lista.filter(pago).length;
-  const cancelaron = lista.filter(s => !pago(s) && !vigente(s, ahora)).length;
-  const reintento = lista.filter(s => !pago(s) && vigente(s, ahora) && !activa(s, ahora)).length;
-  const faltan = lista.length - pagaron - cancelaron - reintento;
-  const total = lista.length || 1;
+  const iniMes = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1) - ZONA;
+  const total = lista || 1;
   const pct = n => Math.round(n / total * 100) + " %";
   const partes = [
     ["vt-cobros-pagaron", pagaron, "pagaron"],
@@ -111,7 +116,7 @@ function pintarCobros(m, ahora){
     ["vt-cobros-cancelaron", cancelaron, "cancelaron"]
   ];
   const cierre = new Date(iniMes - 1 + ZONA);
-  document.getElementById("vr-cobros-sub").textContent = num(lista.length) + " médicos tenían que renovar (activos y al día al " +
+  document.getElementById("vr-cobros-sub").textContent = num(lista) + " médicos tenían que renovar (activos y al día al " +
     cierre.getUTCDate() + " de " + MESES[cierre.getUTCMonth()] + ") · tasa de renovación " + pct(pagaron);
   document.getElementById("vr-cobros-barra").innerHTML = partes.filter(p => p[1])
     .map(([c, n, t]) => '<span class="' + c + '" style="width:' + (n / total * 100) + '%" title="' + num(n) + " " + t + '"></span>').join("");
@@ -120,22 +125,22 @@ function pintarCobros(m, ahora){
 }
 
 /* Médicos activos: una barra por mes del rango con los vigentes al cierre
-   (o a la fecha «Hasta», si el mes no termina dentro del rango) */
-function pintarActivos(m, a, b){
-  const lista = [];
-  for (let { anio, mes } = claveMes(a); ; mes === 11 ? (anio++, mes = 0) : mes++){
-    const ini = inicioMes(anio, mes);
-    if (ini > b) break;
-    const fin = inicioMes(mes === 11 ? anio + 1 : anio, (mes + 1) % 12) - 1;
-    /* Entradas y salidas del mes completo (aunque el rango empiece a mitad), hasta el corte */
-    const corte = Math.min(fin, b);
-    lista.push({ anio, mes, parcial: corte < fin,
-      vigentes: m.subs.filter(s => vigente(s, corte)).length,
-      entraron: m.subs.filter(s => s.alta >= ini && s.alta <= corte).length,
-      seFueron: m.subs.filter(s => s.baja != null && s.baja >= ini && s.baja <= corte).length });
-  }
-  const vigentes = m.subs.filter(s => vigente(s, b)).length;
-  const alDia = m.subs.filter(s => activa(s, b)).length;
+   (o a la fecha «Hasta», si el mes no termina dentro del rango).
+   Supabase entrega una fila por mes y la cifra al final del rango; si llega
+   tarde una respuesta vieja (se cambiaron las fechas en el camino), se ignora. */
+let turnoActivos = 0;
+async function pintarActivos(a, b){
+  const mio = ++turnoActivos;
+  const [porMes, alFinal] = await Promise.all([
+    sb.rpc("activos_por_mes", { p_desde: enIso(a), p_hasta: enIso(b) }),
+    sb.rpc("activos_en", { p_t: enIso(b) })
+  ]);
+  if (mio !== turnoActivos || !document.getElementById("vr-activos-cifra")) return;
+  const error = porMes.error || alFinal.error;
+  if (error || !alFinal.data || !alFinal.data[0]) return sinDatos("vr-activos-cifra", "No se pudieron leer los médicos activos. " + ((error && error.message) || ""));
+  const lista = porMes.data.map(x => ({ anio: x.anio, mes: x.mes, parcial: x.parcial,
+    vigentes: x.vigentes, entraron: x.entraron, seFueron: x.se_fueron }));
+  const { vigentes, al_dia: alDia } = alFinal.data[0];
   const esHoy = finDelDia(b) >= finDelDia(Date.now());
   const d = new Date(b + ZONA);
   document.getElementById("vr-activos-cifra").innerHTML = "<b>" + num(vigentes) + "</b><span>vigentes " +
