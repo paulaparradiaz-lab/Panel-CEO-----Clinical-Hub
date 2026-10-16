@@ -115,7 +115,14 @@ async function decidir(){
     if (porInactividad) avisar("Por seguridad, tu sesión se cerró tras 12 horas sin usar el panel. Vuelve a entrar.", "ok");
     return mostrarPaso("paso-login");
   }
-  if (inactivaDemasiado()) return cerrarPorInactividad();
+  if (inactivaDemasiado()){
+    /* Al abrir la página no hace falta recargarla: se cierra la sesión aquí
+       mismo y se muestra el acceso (más rápido que bajar todo otra vez) */
+    if (panelAbierto) return cerrarPorInactividad();
+    await sb.auth.signOut({ scope: "local" });
+    avisar("Por seguridad, tu sesión se cerró tras 12 horas sin usar el panel. Vuelve a entrar.", "ok");
+    return mostrarPaso("paso-login");
+  }
   const { data: nivel, error } = await sb.auth.mfa.getAuthenticatorAssuranceLevel();
   if (error){ avisar(traducirError(error.message), "mal"); return mostrarPaso("paso-login"); }
   /* Una passkey aprobada vale como contraseña + código: no se pide el código */
@@ -346,6 +353,12 @@ function moverCurva(){
   const curva = $(".pestana-curva");
   const activa = $('#pestanas .pestana[aria-selected="true"]');
   if (!curva || !activa) return;
+  /* La primera vez se pone directo en su lugar, sin deslizarse desde la orilla */
+  if (!curva.dataset.puesta){
+    curva.dataset.puesta = "1";
+    curva.style.transition = "none";
+    requestAnimationFrame(() => requestAnimationFrame(() => { curva.style.transition = ""; }));
+  }
   const caja = activa.getBoundingClientRect();
   if (menuAbajo.matches){
     curva.style.transform = "translateX(" + (caja.left + caja.width / 2 - curva.offsetWidth / 2) + "px)";
@@ -356,6 +369,8 @@ function moverCurva(){
 }
 window.addEventListener("resize", moverCurva);
 menuAbajo.addEventListener("change", moverCurva);
+/* Cuando llega la tipografía cambian los tamaños: se vuelve a medir */
+if (document.fonts && document.fonts.ready) document.fonts.ready.then(moverCurva);
 
 function abrirSeccion(id){
   const s = SECCIONES.find(x => x.id === id);
