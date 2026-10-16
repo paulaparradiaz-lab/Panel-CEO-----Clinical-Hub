@@ -98,6 +98,7 @@ sb.auth.onAuthStateChange(evento => {
 });
 
 function mostrarPaso(id){
+  delete document.documentElement.dataset.arranque;   // ver el <head> de index.html
   PASOS.forEach(p => { $("#" + p).hidden = (p !== id); });
   $("#volver").hidden = (id === "paso-login" || id === "paso-passkey");
   $("#acceso").hidden = false;
@@ -292,6 +293,7 @@ $("#volver").addEventListener("click", salir);
 async function abrirPanel(sesion){
   if (!$("#panel").hidden) return;
   panelAbierto = true;
+  delete document.documentElement.dataset.arranque;   // ver el <head> de index.html
   $("#acceso").hidden = true;
   $("#panel").hidden = false;
 

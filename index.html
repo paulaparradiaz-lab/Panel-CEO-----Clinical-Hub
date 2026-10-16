@@ -30,6 +30,19 @@
 <script>
 /* Aplica el tema guardado antes de pintar, para que no destelle */
 try { const t = localStorage.getItem("ch-tema"); if (t) document.documentElement.dataset.theme = t; } catch(e) {}
+/* Primera pantalla antes de dibujar nada (en celular la página llega por
+   partes y se pinta mientras llega): sin sesión guardada, o con más de 12
+   horas sin usar el panel, se ven ya los campos de entrada; con sesión, no se
+   muestra la tarjeta de acceso vacía mientras se abre el panel. panel.js
+   decide después lo definitivo (mismas claves y mismas 12 horas) y quita la marca. */
+try {
+  if (!/access_token|type=recovery|error/.test(location.hash)){
+    const sesion = localStorage.getItem("sb-pjpidtavlmqhogikizkm-auth-token");
+    const ultima = Number(localStorage.getItem("ch-ultima-actividad")) || 0;
+    const vencida = ultima > 0 && Date.now() - ultima > 12 * 60 * 60 * 1000;
+    document.documentElement.dataset.arranque = (!sesion || vencida) ? "login" : "panel";
+  }
+} catch(e) {}
 </script>
 <style>
 /* ============================================================
@@ -90,6 +103,9 @@ try { const t = localStorage.getItem("ch-tema"); if (t) document.documentElement
 *{box-sizing:border-box}
 html,body{margin:0;padding:0}
 [hidden]{display:none!important}
+/* Primera pantalla (ver el script del <head>); panel.js quita la marca al decidir */
+html[data-arranque="login"] #paso-login[hidden]{display:block!important}
+html[data-arranque="panel"] #acceso{display:none!important}
 body{
   background:var(--bg); color:var(--ink);
   font-family:var(--sans); font-size:15.5px; line-height:1.65;
@@ -2314,24 +2330,6 @@ select.filtrando{border-color:var(--sel);box-shadow:inset 0 0 0 1px var(--sel)}
 
 <!-- Ventana genérica de formularios: etiquetas, soluciones y tareas -->
 <div class="velo" id="velo-forma" hidden></div>
-
-<script>
-/* Primera pantalla sin esperar al código del panel (que tarda en bajar si
-   el navegador no lo tiene guardado): sin sesión guardada, o con más de 12
-   horas sin usar el panel, ya se muestran los campos de entrada; con sesión,
-   no se muestra la tarjeta de acceso vacía mientras se abre el panel.
-   panel.js decide después lo definitivo (mismas claves y mismas 12 horas). */
-(function(){
-  try {
-    if (/access_token|type=recovery|error/.test(location.hash)) return;
-    var sesion = localStorage.getItem("sb-pjpidtavlmqhogikizkm-auth-token");
-    var ultima = Number(localStorage.getItem("ch-ultima-actividad")) || 0;
-    var vencida = ultima > 0 && Date.now() - ultima > 12 * 60 * 60 * 1000;
-    if (!sesion || vencida) document.getElementById("paso-login").hidden = false;
-    else document.getElementById("acceso").hidden = true;
-  } catch(e) {}
-})();
-</script>
 
 <!-- Supabase con versión fija: el navegador la guarda y una versión nueva no
      cambia nada sin avisar. Para actualizar, cambiar el número y probar el acceso
